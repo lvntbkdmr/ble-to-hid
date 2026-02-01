@@ -23,6 +23,25 @@ static struct bt_uuid_16 hid_uuid = BT_UUID_INIT_16(BT_UUID_HIDS_VAL);
 static struct bt_conn *current_conn;
 static bool scanning;
 
+/* Buffer to store discovered device name */
+static char discovered_name[32];
+
+/* Helper to extract device name from advertising data */
+static bool parse_device_name(struct bt_data *data, void *user_data)
+{
+	char *name = user_data;
+
+	switch (data->type) {
+	case BT_DATA_NAME_SHORTENED:
+	case BT_DATA_NAME_COMPLETE:
+		memcpy(name, data->data, MIN(data->data_len, 31));
+		name[MIN(data->data_len, 31)] = '\0';
+		return false; /* Stop parsing */
+	default:
+		return true; /* Continue parsing */
+	}
+}
+
 /* BLE connection parameters for low latency */
 static struct bt_le_conn_param conn_param = {
 	.interval_min = 6,   /* 7.5ms (6 * 1.25ms) */
@@ -42,8 +61,22 @@ static void scan_filter_match(struct bt_scan_device_info *device_info,
 	}
 
 	bt_addr_le_to_str(device_info->recv_info->addr, addr, sizeof(addr));
-	LOG_INF("Found HID device: %s, RSSI %d", addr,
-		device_info->recv_info->rssi);
+
+	/* Extract device name from advertising data */
+	discovered_name[0] = '\0';
+	bt_data_parse(device_info->adv_data, parse_device_name, discovered_name);
+
+	if (discovered_name[0] != '\0') {
+		LOG_INF("Found HID device: \"%s\" [%s] RSSI %d",
+			discovered_name, addr, device_info->recv_info->rssi);
+		printk("\n>>> Found: \"%s\" [%s] RSSI %d\n",
+		       discovered_name, addr, device_info->recv_info->rssi);
+	} else {
+		LOG_INF("Found HID device: [%s] RSSI %d (no name)",
+			addr, device_info->recv_info->rssi);
+		printk("\n>>> Found: [%s] RSSI %d (no name)\n",
+		       addr, device_info->recv_info->rssi);
+	}
 }
 
 static void scan_connecting_error(struct bt_scan_device_info *device_info)
@@ -54,7 +87,13 @@ static void scan_connecting_error(struct bt_scan_device_info *device_info)
 static void scan_connecting(struct bt_scan_device_info *device_info,
 			    struct bt_conn *conn)
 {
-	LOG_INF("Connecting to device...");
+	if (discovered_name[0] != '\0') {
+		LOG_INF("Connecting to \"%s\"...", discovered_name);
+		printk("Connecting to \"%s\"...\n", discovered_name);
+	} else {
+		LOG_INF("Connecting to device...");
+		printk("Connecting to device...\n");
+	}
 	current_conn = bt_conn_ref(conn);
 }
 
