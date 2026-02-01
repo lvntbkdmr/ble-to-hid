@@ -65,34 +65,42 @@ int main(void)
 	k_msleep(2000);
 
 	print_banner();
+	k_msleep(100);
 
 	/* Initialize HID bridge (also initializes HOGP client) */
-	LOG_INF("Initializing HID bridge...");
+	printk("Initializing HID bridge...\n");
 	err = hid_bridge_init();
 	if (err) {
-		LOG_ERR("HID bridge init failed: %d", err);
+		printk("ERROR: HID bridge init failed: %d\n", err);
 		return err;
 	}
+	printk("HID bridge OK\n");
+	k_msleep(100);
 
 	/* Initialize BLE central */
-	LOG_INF("Initializing BLE...");
+	printk("Initializing BLE...\n");
 	err = ble_central_init();
 	if (err) {
-		LOG_ERR("BLE init failed: %d", err);
+		printk("ERROR: BLE init failed: %d\n", err);
 		return err;
 	}
+	printk("BLE OK\n");
+	k_msleep(100);
 
 	/* Start scanning for HID devices */
-	LOG_INF("Starting BLE scan...");
+	printk("Starting BLE scan...\n");
 	err = ble_central_start_scan();
 	if (err) {
-		LOG_ERR("Failed to start scanning: %d", err);
+		printk("ERROR: Failed to start scanning: %d\n", err);
 		return err;
 	}
 
 	printk("\n");
-	printk("Scanning for Bluetooth HID devices...\n");
-	printk("Make sure your keyboard is in pairing mode.\n");
+	printk("==========================================\n");
+	printk("  SCANNING FOR BLUETOOTH HID KEYBOARDS\n");
+	printk("==========================================\n");
+	printk("Put your keyboard in pairing mode now.\n");
+	printk("(For Magic Keyboard: hold power 5+ sec)\n");
 	printk("\n");
 
 	/* Main loop - status monitoring */
