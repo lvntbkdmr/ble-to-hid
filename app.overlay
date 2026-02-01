@@ -10,12 +10,4 @@
 	cdc_acm_uart0: cdc_acm_uart0 {
 		compatible = "zephyr,cdc-acm-uart";
 	};
-
-	hid0: hid0 {
-		compatible = "zephyr,hid-device";
-		interface-name = "HID Keyboard";
-		protocol-code = "keyboard";
-		in-report-size = <8>;
-		in-polling-period-us = <1000>;
-	};
 };

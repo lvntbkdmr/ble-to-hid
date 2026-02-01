@@ -89,6 +89,7 @@ static const uint8_t hid_report_desc[] = {
 
 static const struct device *hid_dev;
 static bool usb_configured;
+static bool hid_ready;
 static K_SEM_DEFINE(hid_sem, 1, 1);
 
 static void int_in_ready_cb(const struct device *dev)
@@ -105,16 +106,20 @@ static void status_cb(enum usb_dc_status_code status, const uint8_t *param)
 	case USB_DC_CONFIGURED:
 		LOG_INF("USB configured");
 		usb_configured = true;
+		/* Signal HID endpoint ready */
+		if (hid_dev) {
+			int_in_ready_cb(hid_dev);
+		}
 		break;
 	case USB_DC_DISCONNECTED:
 		LOG_INF("USB disconnected");
 		usb_configured = false;
 		break;
 	case USB_DC_SUSPEND:
-		LOG_INF("USB suspended");
+		LOG_DBG("USB suspended");
 		break;
 	case USB_DC_RESUME:
-		LOG_INF("USB resumed");
+		LOG_DBG("USB resumed");
 		break;
 	default:
 		break;
@@ -129,11 +134,16 @@ int app_usb_hid_init(void)
 {
 	int ret;
 
+	LOG_INF("Looking for HID device...");
+
 	hid_dev = device_get_binding("HID_0");
 	if (hid_dev == NULL) {
-		LOG_ERR("Cannot get HID device binding");
+		LOG_ERR("Cannot get HID device binding - HID_0 not found");
+		LOG_ERR("USB HID will not be available");
 		return -ENODEV;
 	}
+
+	LOG_INF("Found HID device: %s", hid_dev->name);
 
 	usb_hid_register_device(hid_dev, hid_report_desc,
 				sizeof(hid_report_desc), &hid_ops);
@@ -148,12 +158,20 @@ int app_usb_hid_init(void)
 		return ret;
 	}
 
+	/* Try to enable USB - ignore error if already enabled (by CDC ACM console) */
 	ret = usb_enable(status_cb);
-	if (ret != 0) {
+	if (ret != 0 && ret != -EALREADY) {
 		LOG_ERR("Failed to enable USB: %d", ret);
 		return ret;
 	}
 
+	if (ret == -EALREADY) {
+		LOG_INF("USB already enabled (by console)");
+		/* Check if already configured */
+		usb_configured = true;
+	}
+
+	hid_ready = true;
 	LOG_INF("USB HID keyboard initialized");
 	return 0;
 }
@@ -161,6 +179,10 @@ int app_usb_hid_init(void)
 int app_usb_hid_send_report(const uint8_t *report)
 {
 	int ret;
+
+	if (!hid_ready || !hid_dev) {
+		return -ENODEV;
+	}
 
 	if (!usb_configured) {
 		return -ENOTCONN;
@@ -193,5 +215,5 @@ int app_usb_hid_release_all(void)
 
 bool app_usb_hid_ready(void)
 {
-	return usb_configured;
+	return hid_ready && usb_configured;
 }
