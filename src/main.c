@@ -52,22 +52,19 @@ int main(void)
 
 	LOG_INF("BLE-to-USB-HID Bridge starting...");
 
-	/* Brief delay to allow USB CDC ACM to initialize */
-	k_msleep(1000);
-
-	print_banner();
-
-	/* Initialize USB HID keyboard */
+	/* Initialize USB HID keyboard first (before USB is enabled) */
 	LOG_INF("Initializing USB HID...");
 	err = app_usb_hid_init();
 	if (err) {
 		LOG_ERR("USB HID init failed: %d", err);
-		return err;
+		/* Continue anyway - BLE scanning might still work */
 	}
 
-	/* Wait for USB to enumerate */
+	/* Wait for USB to enumerate and console to be ready */
 	LOG_INF("Waiting for USB enumeration...");
-	k_msleep(500);
+	k_msleep(2000);
+
+	print_banner();
 
 	/* Initialize HID bridge (also initializes HOGP client) */
 	LOG_INF("Initializing HID bridge...");
@@ -95,7 +92,7 @@ int main(void)
 
 	printk("\n");
 	printk("Scanning for Bluetooth HID devices...\n");
-	printk("Make sure your Corne keyboard is in pairing mode.\n");
+	printk("Make sure your keyboard is in pairing mode.\n");
 	printk("\n");
 
 	/* Main loop - status monitoring */
