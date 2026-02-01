@@ -74,8 +74,9 @@ static void hogp_ready_cb(struct bt_hogp *hogp_ctx)
 }
 
 /* HOGP protocol mode change callback */
-static void hogp_pm_update_cb(struct bt_hogp *hogp_ctx, uint8_t pm)
+static void hogp_pm_update_cb(struct bt_hogp *hogp_ctx)
 {
+	uint8_t pm = bt_hogp_pm_get(hogp_ctx);
 	LOG_INF("Protocol mode: %s", pm == BT_HIDS_PM_BOOT ? "Boot" : "Report");
 }
 
@@ -88,8 +89,8 @@ static struct bt_hogp_init_params hogp_init_params = {
 static void discovery_completed(struct bt_gatt_dm *dm, void *ctx)
 {
 	int err;
-	struct bt_conn *conn = bt_gatt_dm_conn_get(dm);
 
+	ARG_UNUSED(ctx);
 	LOG_INF("GATT discovery completed");
 
 	bt_gatt_dm_data_print(dm);
@@ -135,16 +136,10 @@ static struct bt_gatt_dm_cb discovery_cb = {
 
 int hogp_client_init(hogp_report_cb_t cb)
 {
-	int err;
-
 	report_callback = cb;
 	hogp_ready = false;
 
-	err = bt_hogp_init(&hogp, &hogp_init_params);
-	if (err) {
-		LOG_ERR("Failed to init HOGP: %d", err);
-		return err;
-	}
+	bt_hogp_init(&hogp, &hogp_init_params);
 
 	LOG_INF("HOGP client initialized");
 	return 0;

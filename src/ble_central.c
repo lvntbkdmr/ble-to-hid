@@ -6,6 +6,7 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
+#include <zephyr/settings/settings.h>
 #include <bluetooth/scan.h>
 #include <zephyr/logging/log.h>
 

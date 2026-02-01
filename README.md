@@ -17,7 +17,10 @@ Firmware that connects to a Corne wireless keyboard via Bluetooth and presents i
 ```bash
 # macOS dependencies
 brew install cmake ninja gperf python3 ccache qemu dtc wget
-pip3 install west
+
+# Install west (use pipx if pip3 fails due to externally-managed-environment)
+pipx install west
+# or: pip3 install west
 
 # Initialize SDK workspace
 mkdir ~/ncs && cd ~/ncs
@@ -25,15 +28,14 @@ west init -m https://github.com/nrfconnect/sdk-nrf --mr v2.6.0
 west update
 west zephyr-export
 
-# Python dependencies
-pip3 install -r zephyr/scripts/requirements.txt
-pip3 install -r nrf/scripts/requirements.txt
-
-# Zephyr SDK toolchain
+# Zephyr SDK toolchain (for Apple Silicon use aarch64 variant)
 cd ~
-wget https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.5/zephyr-sdk-0.16.5_macos-x86_64.tar.xz
-tar xf zephyr-sdk-0.16.5_macos-x86_64.tar.xz
-cd zephyr-sdk-0.16.5
+# For Intel Mac:
+# wget https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.5/zephyr-sdk-0.16.5_macos-x86_64.tar.xz
+# For Apple Silicon:
+wget https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.5/zephyr-sdk-0.16.5_macos-aarch64.tar.xz
+tar xf zephyr-sdk-*.tar.xz
+cd zephyr-sdk-*
 ./setup.sh
 
 # Add to ~/.zshrc
@@ -44,7 +46,7 @@ export ZEPHYR_BASE=~/ncs/zephyr
 
 ```bash
 cd ~/ncs
-west build -b xiao_ble/nrf52840 /path/to/ble-to-hid
+west build -b xiao_ble /path/to/ble-to-hid
 ```
 
 ## Flash

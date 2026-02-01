@@ -89,7 +89,7 @@ void hid_bridge_handle_report(const uint8_t *report, uint8_t len)
 		len > 6 ? report[6] : 0, len > 7 ? report[7] : 0);
 
 	/* Check if USB is ready */
-	if (!usb_hid_ready()) {
+	if (!app_usb_hid_ready()) {
 		reports_dropped++;
 		if (reports_dropped % 100 == 1) {
 			LOG_WRN("USB not ready, reports dropped: %u", reports_dropped);
@@ -101,7 +101,7 @@ void hid_bridge_handle_report(const uint8_t *report, uint8_t len)
 	uint8_t usb_report[8] = {0};
 	memcpy(usb_report, report, len < 8 ? len : 8);
 
-	err = usb_hid_send_report(usb_report);
+	err = app_usb_hid_send_report(usb_report);
 	if (err) {
 		reports_dropped++;
 		LOG_DBG("Failed to send USB report: %d", err);
@@ -128,7 +128,7 @@ void hid_bridge_on_disconnect(void)
 	LOG_INF("BLE disconnected, releasing all keys");
 
 	/* Release all keys to prevent stuck keys */
-	usb_hid_release_all();
+	app_usb_hid_release_all();
 
 	/* Clear last report */
 	memset(last_report, 0, sizeof(last_report));

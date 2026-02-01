@@ -59,7 +59,7 @@ int main(void)
 
 	/* Initialize USB HID keyboard */
 	LOG_INF("Initializing USB HID...");
-	err = usb_hid_init();
+	err = app_usb_hid_init();
 	if (err) {
 		LOG_ERR("USB HID init failed: %d", err);
 		return err;

@@ -8,7 +8,7 @@
 
 #include "usb_hid.h"
 
-LOG_MODULE_REGISTER(usb_hid, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(app_usb_hid, LOG_LEVEL_INF);
 
 /* Boot keyboard HID report descriptor */
 static const uint8_t hid_report_desc[] = {
@@ -125,7 +125,7 @@ static const struct hid_ops hid_ops = {
 	.int_in_ready = int_in_ready_cb,
 };
 
-int usb_hid_init(void)
+int app_usb_hid_init(void)
 {
 	int ret;
 
@@ -138,7 +138,11 @@ int usb_hid_init(void)
 	usb_hid_register_device(hid_dev, hid_report_desc,
 				sizeof(hid_report_desc), &hid_ops);
 
-	ret = usb_hid_init_device(hid_dev);
+	if (usb_hid_set_proto_code(hid_dev, HID_BOOT_IFACE_CODE_KEYBOARD)) {
+		LOG_WRN("Failed to set Protocol Code");
+	}
+
+	ret = usb_hid_init(hid_dev);
 	if (ret != 0) {
 		LOG_ERR("Failed to init HID device: %d", ret);
 		return ret;
@@ -154,7 +158,7 @@ int usb_hid_init(void)
 	return 0;
 }
 
-int usb_hid_send_report(const uint8_t *report)
+int app_usb_hid_send_report(const uint8_t *report)
 {
 	int ret;
 
@@ -169,7 +173,7 @@ int usb_hid_send_report(const uint8_t *report)
 		return ret;
 	}
 
-	ret = hid_int_ep_write(hid_dev, report, USB_HID_REPORT_SIZE, NULL);
+	ret = hid_int_ep_write(hid_dev, report, APP_USB_HID_REPORT_SIZE, NULL);
 	if (ret != 0) {
 		LOG_ERR("Failed to send HID report: %d", ret);
 		k_sem_give(&hid_sem);
@@ -179,15 +183,15 @@ int usb_hid_send_report(const uint8_t *report)
 	return 0;
 }
 
-int usb_hid_release_all(void)
+int app_usb_hid_release_all(void)
 {
-	static const uint8_t empty_report[USB_HID_REPORT_SIZE] = {0};
+	static const uint8_t empty_report[APP_USB_HID_REPORT_SIZE] = {0};
 
 	LOG_DBG("Releasing all keys");
-	return usb_hid_send_report(empty_report);
+	return app_usb_hid_send_report(empty_report);
 }
 
-bool usb_hid_ready(void)
+bool app_usb_hid_ready(void)
 {
 	return usb_configured;
 }
