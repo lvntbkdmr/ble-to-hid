@@ -97,6 +97,51 @@ static void scan_connecting(struct bt_scan_device_info *device_info,
 	current_conn = bt_conn_ref(conn);
 }
 
+/* Debug: Show ALL BLE devices (not just filtered ones) */
+static void scan_recv_cb(const struct bt_le_scan_recv_info *info,
+			 struct net_buf_simple *buf)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+	char name[32] = "(unknown)";
+
+	/* Only show connectable devices */
+	if (!(info->adv_props & BT_GAP_ADV_PROP_CONNECTABLE)) {
+		return;
+	}
+
+	bt_addr_le_to_str(info->addr, addr, sizeof(addr));
+
+	/* Try to extract name from advertising data */
+	struct net_buf_simple_state state;
+	net_buf_simple_save(buf, &state);
+
+	while (buf->len > 1) {
+		uint8_t len = net_buf_simple_pull_u8(buf);
+		if (len == 0 || len > buf->len) {
+			break;
+		}
+		uint8_t type = net_buf_simple_pull_u8(buf);
+		if (type == BT_DATA_NAME_COMPLETE || type == BT_DATA_NAME_SHORTENED) {
+			uint8_t name_len = MIN(len - 1, sizeof(name) - 1);
+			memcpy(name, buf->data, name_len);
+			name[name_len] = '\0';
+			break;
+		}
+		net_buf_simple_pull(buf, len - 1);
+	}
+
+	net_buf_simple_restore(buf, &state);
+
+	/* Only print devices with names (to reduce spam) */
+	if (name[0] != '(' && info->rssi > -80) {
+		printk("[DEBUG] BLE device: \"%s\" [%s] RSSI %d\n", name, addr, info->rssi);
+	}
+}
+
+static struct bt_le_scan_cb scan_debug_cb = {
+	.recv = scan_recv_cb,
+};
+
 BT_SCAN_CB_INIT(scan_cb, scan_filter_match, NULL,
 		scan_connecting_error, scan_connecting);
 
@@ -197,6 +242,10 @@ int ble_central_init(void)
 	}
 
 	LOG_INF("Bluetooth initialized");
+
+	/* Register debug callback to see ALL devices */
+	bt_le_scan_cb_register(&scan_debug_cb);
+	printk("[DEBUG] Debug scan callback registered - will show ALL BLE devices\n");
 
 	/* Load stored bonds */
 	settings_load();
