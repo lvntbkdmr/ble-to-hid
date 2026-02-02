@@ -68,6 +68,12 @@ west build -b xiao_ble /path/to/ble-to-hid
 - Solid: Connected to keyboard
 - Brief flash: Keystroke forwarded
 
+## Serial Commands
+
+While connected to the serial console, you can use these commands:
+
+- `c` - Clear all Bluetooth bonds (requires confirmation with `y`)
+
 ## Project Structure
 
 ```
@@ -88,7 +94,7 @@ ble-to-hid/
 
 **Device not found**: Ensure Corne is in pairing mode and close enough.
 
-**Pairing fails**: Clear bonds on both devices and try again.
+**Pairing fails**: Clear bonds on both devices and try again. On the dongle, press `c` then `y` in the serial console to clear bonds.
 
 **Keys stuck**: Disconnect and reconnect USB to reset HID state.
 

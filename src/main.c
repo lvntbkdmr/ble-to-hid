@@ -18,17 +18,25 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/uart.h>
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/logging/log.h>
 
 #include "usb_hid.h"
 #include "ble_central.h"
 #include "hid_bridge.h"
+#include "pairing.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 /* Status LED - blinks during scanning, solid when connected */
 static const struct gpio_dt_spec status_led = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led0), gpios, {0});
+
+/* Console UART for command input */
+static const struct device *console_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+
+/* Command state for bond clearing confirmation */
+static bool awaiting_clear_confirm = false;
 
 static void print_banner(void)
 {
@@ -44,6 +52,50 @@ static void print_banner(void)
 	printk("Pairing passkeys will be displayed here.\n");
 	printk("Connect with: screen /dev/tty.usbmodem*\n");
 	printk("\n");
+	printk("Commands:\n");
+	printk("  c - Clear all Bluetooth bonds\n");
+	printk("\n");
+}
+
+/*
+ * Process serial command input
+ * Returns true if a command was processed
+ */
+static void process_serial_commands(void)
+{
+	unsigned char c;
+
+	/* Non-blocking poll for input */
+	while (uart_poll_in(console_dev, &c) == 0) {
+		if (awaiting_clear_confirm) {
+			if (c == 'y' || c == 'Y') {
+				printk("\nClearing all Bluetooth bonds...\n");
+				pairing_clear_bonds();
+				printk("All bonds cleared. Device will scan for new keyboards.\n");
+				printk("You may need to put your keyboard in pairing mode again.\n\n");
+
+				/* Restart scanning if not connected */
+				if (!ble_central_is_connected()) {
+					ble_central_start_scan();
+				}
+			} else if (c == 'n' || c == 'N') {
+				printk("\nBond clearing cancelled.\n\n");
+			} else {
+				printk("\nInvalid input. Bond clearing cancelled.\n\n");
+			}
+			awaiting_clear_confirm = false;
+		} else if (c == 'c' || c == 'C') {
+			printk("\n");
+			printk("========================================\n");
+			printk("  CLEAR ALL BLUETOOTH BONDS?\n");
+			printk("========================================\n");
+			printk("This will remove all paired devices.\n");
+			printk("You will need to re-pair your keyboard.\n");
+			printk("\n");
+			printk("Press 'y' to confirm, any other key to cancel: ");
+			awaiting_clear_confirm = true;
+		}
+	}
 }
 
 int main(void)
@@ -103,11 +155,21 @@ int main(void)
 	printk("(For Magic Keyboard: hold power 5+ sec)\n");
 	printk("\n");
 
+	/* Verify console device is ready */
+	if (!device_is_ready(console_dev)) {
+		LOG_WRN("Console device not ready - serial commands disabled");
+	}
+
 	/* Main loop - status monitoring */
 	bool was_connected = false;
 	int blink_counter = 0;
 
 	while (1) {
+		/* Check for serial commands */
+		if (device_is_ready(console_dev)) {
+			process_serial_commands();
+		}
+
 		bool connected = ble_central_is_connected();
 
 		if (connected != was_connected) {
