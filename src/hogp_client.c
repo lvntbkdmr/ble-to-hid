@@ -6,6 +6,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <bluetooth/gatt_dm.h>
 #include <bluetooth/services/hogp.h>
+#include <bluetooth/services/hids.h>
 #include <zephyr/logging/log.h>
 
 #include "hogp_client.h"
@@ -15,25 +16,28 @@ LOG_MODULE_REGISTER(hogp_client, LOG_LEVEL_INF);
 static struct bt_hogp hogp;
 static hogp_report_cb_t report_callback;
 static bool hogp_ready;
+static uint8_t subscribed_reports;
 
-/* Boot keyboard input report handler */
-static uint8_t hogp_boot_kbd_report_read(struct bt_hogp *hogp_ctx,
-					 struct bt_hogp_rep_info *rep,
-					 uint8_t err,
-					 const uint8_t *data)
+/* Input report notification handler */
+static uint8_t hogp_report_notify(struct bt_hogp *hogp_ctx,
+				  struct bt_hogp_rep_info *rep,
+				  uint8_t err,
+				  const uint8_t *data)
 {
 	if (err) {
-		LOG_ERR("Boot keyboard report read error: %u", err);
+		LOG_ERR("Report notification error: %u", err);
 		return BT_GATT_ITER_STOP;
 	}
 
 	if (!data) {
-		LOG_DBG("Boot keyboard report unsubscribed");
+		LOG_DBG("Report unsubscribed (id=%u)", bt_hogp_rep_id(rep));
 		return BT_GATT_ITER_STOP;
 	}
 
-	uint8_t len = bt_hogp_rep_size(rep);
-	LOG_DBG("Boot keyboard report received, len=%u", len);
+	uint8_t id = bt_hogp_rep_id(rep);
+	size_t len = bt_hogp_rep_size(rep);
+
+	LOG_DBG("Report received: id=%u, len=%zu", id, len);
 
 	/* Forward to registered callback */
 	if (report_callback) {
@@ -47,30 +51,41 @@ static uint8_t hogp_boot_kbd_report_read(struct bt_hogp *hogp_ctx,
 static void hogp_ready_cb(struct bt_hogp *hogp_ctx)
 {
 	int err;
-	struct bt_hogp_rep_info *boot_kbd_rep;
+	struct bt_hogp_rep_info *rep = NULL;
+	size_t rep_count;
 
 	LOG_INF("HOGP service ready");
 
-	/* Get boot keyboard input report */
-	boot_kbd_rep = bt_hogp_rep_boot_kbd_in(hogp_ctx);
-	if (!boot_kbd_rep) {
-		LOG_ERR("Boot keyboard input report not found");
-		return;
+	rep_count = bt_hogp_rep_count(hogp_ctx);
+	LOG_INF("Found %zu HID reports", rep_count);
+
+	subscribed_reports = 0;
+
+	/* Iterate through all reports and subscribe to input reports */
+	while ((rep = bt_hogp_rep_next(hogp_ctx, rep)) != NULL) {
+		uint8_t rep_id = bt_hogp_rep_id(rep);
+		enum bt_hids_report_type rep_type = bt_hogp_rep_type(rep);
+
+		LOG_INF("Report: id=%u, type=%u", rep_id, rep_type);
+
+		/* Subscribe to input reports only */
+		if (rep_type == BT_HIDS_REPORT_TYPE_INPUT) {
+			err = bt_hogp_rep_subscribe(hogp_ctx, rep, hogp_report_notify);
+			if (err) {
+				LOG_ERR("Failed to subscribe to report %u: %d", rep_id, err);
+			} else {
+				LOG_INF("Subscribed to input report %u", rep_id);
+				subscribed_reports++;
+			}
+		}
 	}
 
-	LOG_INF("Boot keyboard report found, size=%u",
-		bt_hogp_rep_size(boot_kbd_rep));
-
-	/* Subscribe to boot keyboard reports */
-	err = bt_hogp_rep_subscribe(hogp_ctx, boot_kbd_rep,
-				    hogp_boot_kbd_report_read);
-	if (err) {
-		LOG_ERR("Failed to subscribe to boot keyboard: %d", err);
-		return;
+	if (subscribed_reports > 0) {
+		LOG_INF("Subscribed to %u input reports", subscribed_reports);
+		hogp_ready = true;
+	} else {
+		LOG_ERR("No input reports found to subscribe");
 	}
-
-	LOG_INF("Subscribed to boot keyboard input reports");
-	hogp_ready = true;
 }
 
 /* HOGP protocol mode change callback */
@@ -102,12 +117,10 @@ static void discovery_completed(struct bt_gatt_dm *dm, void *ctx)
 		goto release;
 	}
 
-	/* Set boot protocol mode for standard 8-byte reports */
-	err = bt_hogp_pm_write(&hogp, BT_HIDS_PM_BOOT);
-	if (err) {
-		LOG_ERR("Failed to set boot protocol mode: %d", err);
-		/* Continue anyway, some devices only support boot protocol */
-	}
+	/* Use Report Protocol mode (default) - no need to switch to boot mode.
+	 * Modern keyboards like ZMK only support Report Protocol which provides
+	 * more features (consumer keys, etc.).
+	 */
 
 release:
 	err = bt_gatt_dm_data_release(dm);
