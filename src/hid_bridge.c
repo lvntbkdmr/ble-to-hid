@@ -10,6 +10,44 @@
 
 LOG_MODULE_REGISTER(hid_bridge, LOG_LEVEL_INF);
 
+/* NKRO report parameters (ZMK default NKRO: 15 bytes) */
+#define NKRO_REPORT_LEN		15
+#define NKRO_BITMAP_OFFSET	2 /* modifier(1) + reserved(1) */
+#define NKRO_BITMAP_LEN		13 /* 13 bytes = 104 key bits */
+#define BOOT_REPORT_LEN		8
+#define BOOT_MAX_KEYS		6
+
+/**
+ * Convert a ZMK NKRO report (15 bytes) to boot keyboard format (8 bytes).
+ */
+static void nkro_to_boot(const uint8_t *nkro, uint8_t *boot)
+{
+	memset(boot, 0, BOOT_REPORT_LEN);
+
+	/* Modifier byte is identical in both formats */
+	boot[0] = nkro[0];
+	/* boot[1] = 0 (reserved) */
+
+	uint8_t key_idx = 0;
+
+	for (int byte = 0; byte < NKRO_BITMAP_LEN && key_idx < BOOT_MAX_KEYS; byte++) {
+		uint8_t bits = nkro[NKRO_BITMAP_OFFSET + byte];
+		if (!bits) {
+			continue;
+		}
+		for (int bit = 0; bit < 8 && key_idx < BOOT_MAX_KEYS; bit++) {
+			if (bits & (1 << bit)) {
+				uint8_t keycode = (byte * 8) + bit;
+				/* Keycodes 0-3 are reserved/error in HID spec */
+				if (keycode >= 4) {
+					boot[2 + key_idx] = keycode;
+					key_idx++;
+				}
+			}
+		}
+	}
+}
+
 /* LED for status indication - use built-in LED on XIAO */
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led0), gpios, {0});
 
@@ -69,16 +107,20 @@ int hid_bridge_init(void)
 void hid_bridge_handle_report(const uint8_t *report, uint8_t len)
 {
 	int err;
+	uint8_t usb_report[BOOT_REPORT_LEN] = {0};
 
 	reports_received++;
 
-	/* Validate report length - boot keyboard is 8 bytes */
-	if (len != 8) {
-		LOG_WRN("Unexpected report length: %u (expected 8)", len);
-		/* Try to handle anyway if it's smaller */
-		if (len > 8) {
-			len = 8;
-		}
+	if (len == NKRO_REPORT_LEN) {
+		/* ZMK NKRO report - convert bitmap to 6KRO boot format */
+		nkro_to_boot(report, usb_report);
+	} else if (len == BOOT_REPORT_LEN) {
+		/* Standard boot report - use as-is */
+		memcpy(usb_report, report, BOOT_REPORT_LEN);
+	} else {
+		LOG_WRN("Unexpected report length: %u", len);
+		/* Best effort: copy what fits */
+		memcpy(usb_report, report, len < BOOT_REPORT_LEN ? len : BOOT_REPORT_LEN);
 	}
 
 	/* Log the report for debugging */
@@ -96,10 +138,6 @@ void hid_bridge_handle_report(const uint8_t *report, uint8_t len)
 		}
 		return;
 	}
-
-	/* Forward to USB with proper 8-byte buffer */
-	uint8_t usb_report[8] = {0};
-	memcpy(usb_report, report, len < 8 ? len : 8);
 
 	err = app_usb_hid_send_report(usb_report);
 	if (err) {

@@ -158,11 +158,14 @@ static void connected(struct bt_conn *conn, uint8_t err)
 			current_conn = NULL;
 		}
 		/* Restart scanning */
+		scanning = false;
 		ble_central_start_scan();
 		return;
 	}
 
 	LOG_INF("Connected: %s", addr);
+
+	scanning = false;
 
 	/* Request connection parameter update for low latency */
 	int ret = bt_conn_le_param_update(conn, &conn_param);
@@ -193,6 +196,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	}
 
 	/* Restart scanning to reconnect */
+	scanning = false;
 	ble_central_start_scan();
 }
 
@@ -229,6 +233,36 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 	.security_changed = security_changed,
 	.le_param_updated = le_param_updated,
 };
+
+static void add_bonded_addr_filter(const struct bt_bond_info *info, void *user_data)
+{
+	int err;
+
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, &info->addr);
+	if (err) {
+		LOG_ERR("Failed to add bonded address filter: %d", err);
+	} else {
+		char addr[BT_ADDR_LE_STR_LEN];
+		bt_addr_le_to_str(&info->addr, addr, sizeof(addr));
+		LOG_INF("Added bonded address filter: %s", addr);
+	}
+}
+
+int ble_central_add_bonded_filter(const bt_addr_le_t *addr)
+{
+	int err;
+
+	err = bt_scan_filter_add(BT_SCAN_FILTER_TYPE_ADDR, addr);
+	if (err) {
+		LOG_ERR("Failed to add bonded address filter: %d", err);
+		return err;
+	}
+
+	char addr_str[BT_ADDR_LE_STR_LEN];
+	bt_addr_le_to_str(addr, addr_str, sizeof(addr_str));
+	LOG_INF("Added bonded address filter: %s", addr_str);
+	return 0;
+}
 
 int ble_central_init(void)
 {
@@ -270,7 +304,13 @@ int ble_central_init(void)
 		return err;
 	}
 
-	err = bt_scan_filter_enable(BT_SCAN_UUID_FILTER, false);
+	/* Load existing bonds as address filters for fast reconnection */
+	bt_foreach_bond(BT_ID_DEFAULT, add_bonded_addr_filter, NULL);
+
+	/* Enable filters - use OR mode (not match_all) so we match
+	 * EITHER the UUID OR the Address of a bonded device.
+	 */
+	err = bt_scan_filter_enable(BT_SCAN_UUID_FILTER | BT_SCAN_ADDR_FILTER, false);
 	if (err) {
 		LOG_ERR("Failed to enable filters: %d", err);
 		return err;

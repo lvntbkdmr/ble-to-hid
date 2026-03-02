@@ -7,6 +7,7 @@
 #include <zephyr/logging/log.h>
 
 #include "pairing.h"
+#include "ble_central.h"
 
 LOG_MODULE_REGISTER(pairing, LOG_LEVEL_INF);
 
@@ -105,6 +106,9 @@ static void pairing_complete(struct bt_conn *conn, bool bonded)
 		printk("Bond stored - will auto-reconnect\n");
 		printk("========================================\n");
 		printk("\n");
+
+		/* Register this device for fast reconnection scan filtering */
+		ble_central_add_bonded_filter(bt_conn_get_dst(conn));
 	} else {
 		LOG_INF("Pairing complete (not bonded): %s", addr);
 	}
