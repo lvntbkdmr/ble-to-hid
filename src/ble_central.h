@@ -24,6 +24,13 @@ int ble_central_start_scan(void);
 void ble_central_stop_scan(void);
 
 /**
+ * Register a bonded device for reconnection scanning
+ * @param addr Pointer to device address
+ * @return 0 on success, negative error code on failure
+ */
+int ble_central_add_bonded_filter(const bt_addr_le_t *addr);
+
+/**
  * Get the current BLE connection
  * @return Pointer to connection object, or NULL if not connected
  */
